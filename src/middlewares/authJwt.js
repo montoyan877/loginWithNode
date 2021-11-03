@@ -1,23 +1,56 @@
 import jwt from "jsonwebtoken";
 import config from "../config";
 import User from "../models/User";
+import Role from "../models/Role";
 
 export const verifyToken = async (req, res, next) => {
-  const token = req.headers["x-access-token"];
-
-  if (!token) return res.status(403).json({ message: "No token provided" });
-
   try {
+    const token = req.headers["x-access-token"];
+
+    if (!token) return res.status(403).json({ message: "No token provided" });
+
     const decoded = jwt.verify(token, config.SECRET);
+
+    req.userId = decoded.id ? decoded.id : "";
+
+    const user = await User.findById(req.userId);
+
+    if (!user) return res.status(404).json({ message: "No user found" });
+
+    next();
   } catch (e) {
-    return res.status(403).json({ message: "Incorrect token provided" });
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+};
+
+export const isModerator = async (req, res, next) => {
+  /**
+   * Se tiene req.userId porque se setea en el middleware de
+   * verifyToken
+   */
+  const user = await User.findById(req.userId);
+  const roles = await Role.find({ _id: { $in: user.roles } });
+
+  for (let i = 0; i < roles.length; i++) {
+    if (roles[i].name === "moderator") {
+      next();
+      return;
+    }
   }
 
-  let idUser = decoded.id ? decoded.id : "";
+  return res.status(403).json({ message: "Require Moderator Role" });
+};
 
-  const user = await User.findById(idUser);
-  console.log(user);
-  if (!user) return res.status(404).json({ message: "No user found" });
+export const isAdmin = async (req, res, next) => {
+  const user = await User.findById(req.userId);
+  const roles = await Role.find({ _id: { $in: user.roles } });
 
-  next();
+  for (let i = 0; i < roles.length; i++) {
+    if (roles[i].name === "admin") {
+      next();
+      return;
+    }
+  }
+
+  return res.status(403).json({ message: "Require Admin Role" });
 };
